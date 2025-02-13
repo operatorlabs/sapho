@@ -12,6 +12,7 @@
   </p>
 </div>
 
+## Overview
 
 [Sapho](https://github.com/operator-labs/sapho) is a research agent built by [Operator Labs](https://operator.io). It is designed to buff up the core reasoner loop for any AI agent, and is designed to interact well with extensible plugins like [DexScreener](https://dexscreener.com). [mentat.fun](https://mentat.fun) uses Sapho as its core research agent. 
 
