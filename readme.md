@@ -1,7 +1,15 @@
 # Sapho - Open Deep Research Agent for Crypto
 
 <div align="center">
-  <img src="https://cc-client-assets.nyc3.cdn.digitaloceanspaces.com/photo/categoryonegames/file/cd68275759e2483b84a5450356f7b499/large/juiceofsaphomentatdrug-250x363.jpg" alt="Sapho Juice" width="200px" style="border-radius: 8px; margin: 20px 0;"/>
+  <img 
+    src="https://cc-client-assets.nyc3.cdn.digitaloceanspaces.com/photo/categoryonegames/file/cd68275759e2483b84a5450356f7b499/large/juiceofsaphomentatdrug-250x363.jpg" 
+    alt="Sapho Juice from Dune" 
+    width="200px" 
+    style="border-radius: 8px; margin: 20px 0 10px 0;"
+  />
+  <p style="color: #666; font-style: italic; margin-bottom: 20px;">
+    Sapho Juice - The mystical substance used by Mentats to enhance their cognitive abilities
+  </p>
 </div>
 
 
