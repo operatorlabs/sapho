@@ -1,12 +1,13 @@
 # Sapho - Open Deep Research Agent for Crypto
 
-[Sapho](https://github.com/operator-labs/sapho) is a research agent built by [Operator Labs](https://operator.io). It is designed to buff up the core reasoner loop for any AI agent, and is designed to interact well with extensible plugins like [DexScreener](https://dexscreener.com). [mentat.fun](https://mentat.fun) uses Sapho as its core research agent. 
-
-Thanks to [dzhng](https://github.com/dzhng) for the original [deep-research](https://github.com/dzhng/deep-research) repo, which inspired this project. 
-
 <div align="center">
   <img src="https://cc-client-assets.nyc3.cdn.digitaloceanspaces.com/photo/categoryonegames/file/cd68275759e2483b84a5450356f7b499/large/juiceofsaphomentatdrug-250x363.jpg" alt="Sapho Juice" width="200px" style="border-radius: 8px; margin: 20px 0;"/>
 </div>
+
+
+[Sapho](https://github.com/operator-labs/sapho) is a research agent built by [Operator Labs](https://operator.io). It is designed to buff up the core reasoner loop for any AI agent, and is designed to interact well with extensible plugins like [DexScreener](https://dexscreener.com). [mentat.fun](https://mentat.fun) uses Sapho as its core research agent. 
+
+Thanks to [dzhng](https://github.com/dzhng) for the original [deep-research](https://github.com/dzhng/deep-research) repo, which inspired this project. 
 
 ## How it works
 
