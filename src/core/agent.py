@@ -201,22 +201,52 @@ IMPORTANT: Your response must:
             response_content = response.choices[0].message.content
             self.logger.info(f"Got response ({len(response_content)} chars)")
             
+            if state:
+                state.add_reasoning_trace(
+                    query=query,
+                    response=response_content,
+                    result={"length": len(response_content), "schema": schema},
+                    trace_type="structured_response"
+                )
+            
             # Try to format it
             try:
-                return await self.reasoner.format_structured_output(
+                formatted = await self.reasoner.format_structured_output(
                     query=response_content,
                     schema=schema
                 )
+                if state:
+                    state.add_reasoning_trace(
+                        query=response_content,
+                        response=formatted,
+                        result={"success": True},
+                        trace_type="format_output"
+                    )
+                return formatted
             except Exception as e:
                 self.logger.error(f"Failed to format response: {str(e)}")
                 self.logger.error("Response content:")
                 self.logger.error(response_content)
+                if state:
+                    state.add_reasoning_trace(
+                        query=response_content,
+                        response=str(e),
+                        result={"success": False, "error": str(e)},
+                        trace_type="format_error"
+                    )
                 raise
                 
         except Exception as e:
             self.logger.error(f"Error processing query: {str(e)}")
             self.logger.error(f"Original query ({len(query)} chars):")
             self.logger.error(query[:1000] + "..." if len(query) > 1000 else query)
+            if state:
+                state.add_reasoning_trace(
+                    query=query,
+                    response=str(e),
+                    result={"success": False, "error": str(e)},
+                    trace_type="process_error"
+                )
             raise
 
     async def _generate_queries(
@@ -307,190 +337,350 @@ IMPORTANT: Your response must:
         num_follow_up: int = 3
     ) -> Dict[str, Any]:
         """Process a single query using state context."""
-        if progress:
-            self._report_action(
-                progress,
-                f"Processing query: {query}",
-                state
-            )
-        
-        # First decide if we should use plugins at all
-        if not await self._should_use_plugins(query):
-            # Use pure reasoning if plugins aren't needed
-            synthesis_response = await self.reasoner.reason(
+        try:
+            if progress:
+                self._report_action(
+                    progress,
+                    f"Processing query: {query}",
+                    state
+                )
+            
+            # First decide if we should use plugins at all
+            plugin_analysis = await self._should_use_plugins(query)
+            state.add_reasoning_trace(
                 query=query,
-                system_prompt="""You are a research assistant. Given the query:
+                response=str(plugin_analysis),
+                result="PLUGINS" if plugin_analysis else "REASONING",
+                trace_type="plugin_decision"
+            )
+            
+            if not plugin_analysis:
+                # Use pure reasoning if plugins aren't needed
+                try:
+                    synthesis_response = await self.reasoner.reason(
+                        query=query,
+                        system_prompt="""You are a research assistant. Given the query:
 1. Analyze the question thoroughly
 2. Extract key insights
-3. Identify areas that need further investigation"""
-            )
-            
-            synthesis_str = await self.reasoner.format_structured_output(
-                synthesis_response.choices[0].message.content,
-                schema={
-                    "type": "object",
-                    "required": ["learnings", "next"],
-                    "additionalProperties": False,
-                    "properties": {
-                        "learnings": {
-                            "type": "array",
-                            "items": {
-                                "type": "string",
-                                "description": "A key learning or insight from the research"
-                            }
-                        },
-                        "next": {
-                            "type": "array",
-                            "items": {
-                                "type": "string",
-                                "description": "A follow-up direction or area to investigate"
+3. Identify areas that need further investigation
+4. BE CONCISE - keep your response under 1000 characters"""
+                    )
+                    
+                    synthesis_str = await self.reasoner.format_structured_output(
+                        synthesis_response.choices[0].message.content,
+                        schema={
+                            "type": "object",
+                            "required": ["learnings", "next"],
+                            "additionalProperties": False,
+                            "properties": {
+                                "learnings": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string",
+                                        "description": "A key learning or insight from the research"
+                                    }
+                                },
+                                "next": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string",
+                                        "description": "A follow-up direction or area to investigate"
+                                    }
+                                }
                             }
                         }
+                    )
+                    synthesis = json.loads(synthesis_str)
+                    
+                    # Update state with new learnings
+                    new_learnings = synthesis.get("learnings", [])[:num_learnings]
+                    state.learnings.extend(new_learnings)
+                    
+                    # Add to query history
+                    state.query_history.append({
+                        "query": query,
+                        "learnings": new_learnings,
+                        "plugins_used": []
+                    })
+                    
+                    state.add_reasoning_trace(
+                        query=query,
+                        response=synthesis_response.choices[0].message.content,
+                        result=synthesis,
+                        trace_type="pure_reasoning"
+                    )
+                    
+                    return {
+                        "learnings": new_learnings,
+                        "next": synthesis.get("next", [])[:num_follow_up],
+                        "plugins": []
                     }
-                }
-            )
-            synthesis = json.loads(synthesis_str)
+                except Exception as e:
+                    self.logger.error(f"Pure reasoning failed: {str(e)}")
+                    # Return empty results on error
+                    return {"learnings": [], "next": [], "plugins": []}
             
-            return {
-                "learnings": synthesis.get("learnings", []),
-                "next": synthesis.get("next", []),
-                "plugins": []
-            }
-        
-        # If plugins are needed, evaluate which ones are relevant
-        relevant_plugins = {}
-        for name, plugin in self.plugins.items():
+            # If plugins are needed, evaluate which ones are relevant
+            relevant_plugins = {}
+            for name, plugin in self.plugins.items():
+                try:
+                    relevance = await self._evaluate_plugin_relevance(query, name, plugin)
+                    state.add_reasoning_trace(
+                        query=f"Evaluate {name} plugin relevance for: {query}",
+                        response=str(relevance),
+                        result={"plugin": name, "relevant": relevance},
+                        trace_type="plugin_evaluation"
+                    )
+                    if relevance:
+                        relevant_plugins[name] = plugin
+                        self.logger.info(f"Using plugin {name} for query: {query}")
+                except Exception as e:
+                    self.logger.error(f"Failed to evaluate plugin {name}: {e}")
+                    continue
+            
+            if not relevant_plugins:
+                self.logger.warning("No relevant plugins found, falling back to pure reasoning")
+                return {"learnings": [], "next": [], "plugins": []}
+            
+            # Generate structured queries for relevant plugins
             try:
-                if await self._evaluate_plugin_relevance(query, name, plugin):
-                    relevant_plugins[name] = plugin
-                    print(f"Using plugin {name} for query: {query}")
-            except Exception as e:
-                print(f"Failed to evaluate plugin {name}: {e}")
-        
-        # Generate structured queries for relevant plugins
-        analysis = await self.reasoner.reason(
-            query=f"""Given this research query: {query}
+                analysis = await self.reasoner.reason(
+                    query=f"""Given this research query: {query}
 
 Available plugins and their capabilities:
 {chr(10).join(f'- {name}: {plugin.query_schema.model_json_schema()}' for name, plugin in relevant_plugins.items())}
 
-What specific data should we request from each plugin to answer this query?""",
-            system_prompt="You are a research assistant. Analyze the query and determine what data we need from each available plugin."
-        )
-        
-        # Format the analysis into structured plugin queries
-        plugin_queries_str = await self.reasoner.format_structured_output(
-            analysis.choices[0].message.content,
-            schema={
-                "type": "object",
-                "required": ["plugin_queries"],
-                "additionalProperties": False,
-                "properties": {
-                    "plugin_queries": {
+What specific data should we request from each plugin to answer this query?
+BE CONCISE - keep your response under 1000 characters.""",
+                    system_prompt="You are a research assistant. Analyze the query and determine what data we need from each available plugin."
+                )
+                
+                state.add_reasoning_trace(
+                    query=query,
+                    response=analysis.choices[0].message.content,
+                    result={"plugins": list(relevant_plugins.keys())},
+                    trace_type="plugin_query_generation"
+                )
+                
+                # Format the analysis into structured plugin queries
+                plugin_queries_str = await self._process_long_query(
+                    analysis.choices[0].message.content,
+                    schema={
                         "type": "object",
-                        "additionalProperties": {
-                            "type": "object",
-                            "required": ["prompt"],
-                            "additionalProperties": False,
-                            "properties": {
-                                "prompt": {
-                                    "type": "string",
-                                    "description": "The specific question or query to analyze"
+                        "required": ["plugin_queries"],
+                        "additionalProperties": False,
+                        "properties": {
+                            "plugin_queries": {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "type": "object",
+                                    "required": ["prompt"],
+                                    "additionalProperties": False,
+                                    "properties": {
+                                        "prompt": {
+                                            "type": "string",
+                                            "description": "The specific question or query to analyze"
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
-                }
-            }
-        )
-        plugin_queries = json.loads(plugin_queries_str).get("plugin_queries", {})
-
-        # Get plugin data
-        plugin_results = {}
-        for name, plugin in relevant_plugins.items():
-            try:
-                if name in plugin_queries:
-                    # For Grok plugin, ensure proper query structure
-                    query_params = {"prompt": plugin_queries[name]["prompt"]}
-                    
-                    # Validate against plugin schema
-                    query_json = json.dumps(
-                        plugin.query_schema(**query_params).model_dump()
-                    )
-                    
-                    plugin_results[name] = await plugin.query(query_json)
-                    if name not in state.plugins_used:
-                        state.plugins_used.append(name)
+                    },
+                    max_chars=1500,
+                    state=state
+                )
+                plugin_queries = json.loads(plugin_queries_str).get("plugin_queries", {})
             except Exception as e:
-                print(f"Plugin {name} failed: {e}")
-                continue
+                self.logger.error(f"Failed to generate plugin queries: {e}")
+                return {"learnings": [], "next": [], "plugins": []}
 
-        # Use reasoning to analyze findings
-        synthesis_response = await self.reasoner.reason(
-            query=json.dumps({
-                "query": query,
-                "plugin_data": plugin_results,
-                "current_context": state.context_notes[-3:] if state.context_notes else []
-            }),
-            system_prompt="""You are a research assistant. Given the query and plugin data:
+            # Get plugin data
+            plugin_results = {}
+            for name, plugin in relevant_plugins.items():
+                try:
+                    if name in plugin_queries:
+                        # For Grok plugin, ensure proper query structure
+                        query_params = {"prompt": plugin_queries[name]["prompt"]}
+                        
+                        # Validate against plugin schema
+                        query_json = json.dumps(
+                            plugin.query_schema(**query_params).model_dump()
+                        )
+                        
+                        plugin_results[name] = await plugin.query(query_json)
+                        if name not in state.plugins_used:
+                            state.plugins_used.append(name)
+                except Exception as e:
+                    self.logger.error(f"Plugin {name} failed: {e}")
+                    continue
+
+            if not plugin_results:
+                self.logger.warning("No plugin results obtained")
+                return {"learnings": [], "next": [], "plugins": []}
+
+            # Use reasoning to analyze findings
+            try:
+                synthesis_response = await self.reasoner.reason(
+                    query=json.dumps({
+                        "query": query,
+                        "plugin_data": plugin_results,
+                        "current_context": state.context_notes[-3:] if state.context_notes else []
+                    }),
+                    system_prompt="""You are a research assistant. Given the query and plugin data:
 1. Analyze the information we've gathered
 2. Extract key learnings
 3. Identify areas that need further investigation
-4. Add any important context notes"""
-        )
-        
-        # Format into structured synthesis
-        synthesis_str = await self.reasoner.format_structured_output(
-            synthesis_response.choices[0].message.content,
-            schema={
-                "type": "object",
-                "required": ["learnings", "next", "context_notes"],
-                "additionalProperties": False,
-                "properties": {
-                    "learnings": {
-                        "type": "array",
-                        "items": {
-                            "type": "string",
-                            "description": "A key learning or insight from the research"
+4. Add any important context notes
+5. BE CONCISE - keep your response under 1000 characters"""
+                )
+                
+                # Format into structured synthesis
+                synthesis_str = await self._process_long_query(
+                    synthesis_response.choices[0].message.content,
+                    schema={
+                        "type": "object",
+                        "required": ["learnings", "next", "context_notes"],
+                        "additionalProperties": False,
+                        "properties": {
+                            "learnings": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string",
+                                    "description": "A key learning or insight from the research"
+                                }
+                            },
+                            "next": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string",
+                                    "description": "A follow-up direction or area to investigate"
+                                }
+                            },
+                            "context_notes": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string",
+                                    "description": "Additional context or notes about the research"
+                                }
+                            }
                         }
                     },
-                    "next": {
-                        "type": "array",
-                        "items": {
-                            "type": "string",
-                            "description": "A follow-up direction or area to investigate"
-                        }
-                    },
-                    "context_notes": {
-                        "type": "array",
-                        "items": {
-                            "type": "string",
-                            "description": "Additional context or notes about the research"
-                        }
-                    }
+                    max_chars=1500,
+                    state=state
+                )
+                synthesis = json.loads(synthesis_str)
+
+                # Update state
+                new_learnings = synthesis.get("learnings", [])[:num_learnings]
+                state.learnings.extend(new_learnings)
+                
+                state.query_history.append({
+                    "query": query,
+                    "learnings": new_learnings,
+                    "plugins_used": list(plugin_results.keys())
+                })
+
+                if "context_notes" in synthesis:
+                    state.context_notes.extend(synthesis.get("context_notes", [])[:3])
+
+                state.add_reasoning_trace(
+                    query=json.dumps({
+                        "query": query,
+                        "plugin_data": plugin_results,
+                        "current_context": state.context_notes[-3:] if state.context_notes else []
+                    }),
+                    response=synthesis_response.choices[0].message.content,
+                    result=synthesis,
+                    trace_type="reasoning_analysis"
+                )
+
+                return {
+                    "learnings": new_learnings,
+                    "next": synthesis.get("next", [])[:num_follow_up],
+                    "plugins": list(plugin_results.keys())
                 }
-            }
-        )
-        synthesis = json.loads(synthesis_str)
+            except Exception as e:
+                self.logger.error(f"Failed to synthesize results: {e}")
+                return {
+                    "learnings": [],
+                    "next": [],
+                    "plugins": list(plugin_results.keys())
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Error in _process_query: {e}")
+            return {"learnings": [], "next": [], "plugins": []}
 
-        # Update state
-        new_learnings = synthesis.get("learnings", [])
-        state.learnings.extend(new_learnings)
+    async def _recursive_summarize(
+        self,
+        content: str,
+        max_chars: int = 2000
+    ) -> str:
+        """Recursively summarize content until it fits within max_chars."""
+        if len(content) <= max_chars:
+            return content
+            
+        # Split into chunks and summarize each
+        chunks = [content[i:i + max_chars] for i in range(0, len(content), max_chars)]
+        summaries = []
         
-        state.query_history.append({
-            "query": query,
-            "learnings": new_learnings,
-            "plugins_used": list(plugin_results.keys())
-        })
+        for chunk in chunks:
+            response = await self.reasoner.reason(
+                query=f"Summarize this content concisely while preserving key information:\n\n{chunk}",
+                system_prompt="You are a research assistant. Create a clear, concise summary that captures the essential points."
+            )
+            summaries.append(response.choices[0].message.content)
+        
+        # Combine summaries
+        combined = "\n\n".join(summaries)
+        
+        # If still too long, recurse
+        if len(combined) > max_chars:
+            return await self._recursive_summarize(combined, max_chars)
+        
+        return combined
 
-        if "context_notes" in synthesis:
-            state.context_notes.extend(synthesis.get("context_notes", []))
+    async def _create_final_report(self, state: ResearchState) -> str:
+        """Create a final research report by analyzing and summarizing all findings."""
+        # Collect all research materials
+        materials = []
+        
+        # Add key learnings
+        if state.learnings:
+            materials.append("Key Learnings:\n" + "\n".join(f"- {learning}" for learning in state.learnings))
+        
+        # Add research path insights
+        for path in state.research_paths:
+            materials.append(f"\nResearch Path: {path['query']}")
+            for sub_query in path.get('sub_queries', []):
+                if sub_query.get('learnings'):
+                    materials.append("  Findings:")
+                    materials.extend(f"  - {learning}" for learning in sub_query['learnings'])
+        
+        # Add context notes
+        if state.context_notes:
+            materials.append("\nContext Notes:\n" + "\n".join(f"- {note}" for note in state.context_notes))
+        
+        # Combine all materials
+        full_content = "\n\n".join(materials)
+        
+        # First pass: Create detailed synthesis
+        synthesis_response = await self.reasoner.reason(
+            query=f"""Analyze and synthesize all research findings into a coherent narrative:
 
-        return {
-            "learnings": new_learnings,
-            "next": synthesis.get("next", []),
-            "plugins": list(plugin_results.keys())
-        }
+{full_content}""",
+            system_prompt="""You are a research assistant. Create a comprehensive synthesis that:
+1. Integrates all key findings
+2. Highlights important connections
+3. Presents a clear narrative
+4. Maintains academic rigor"""
+        )
+        
+        # Second pass: Create final, concise report
+        detailed_synthesis = synthesis_response.choices[0].message.content
+        final_report = await self._recursive_summarize(detailed_synthesis)
+        
+        return final_report
 
     async def research(
         self,
@@ -554,24 +744,37 @@ What specific data should we request from each plugin to answer this query?""",
             }
             state.research_paths.append(current_path)
 
+            # Process each query and its sub-queries
             for i, q in enumerate(queries):
                 try:
-                    # Process query
+                    # Process current query
                     result = await self._process_query(
                         query=q["query"],
                         state=state,
+                        progress=progress,
                         num_follow_up=max(1, breadth // 2)
                     )
                     
                     sub_path_id = f"{path_id}_{i}"
-                    current_path["sub_queries"].append({
+                    sub_query_result = {
                         "id": sub_path_id,
                         "query": q["query"],
-                        "learnings": result["learnings"]
-                    })
+                        "learnings": result["learnings"],
+                        "plugins_used": result["plugins"],
+                        "sub_queries": []
+                    }
+                    current_path["sub_queries"].append(sub_query_result)
 
-                    # Recurse if needed
-                    if depth > 0:
+                    # Add to state's query history if not already there
+                    if not any(entry["query"] == q["query"] for entry in state.query_history):
+                        state.query_history.append({
+                            "query": q["query"],
+                            "learnings": result["learnings"],
+                            "plugins_used": result["plugins"]
+                        })
+
+                    # Recurse if needed and there are follow-up directions
+                    if depth > 0 and result["next"]:
                         report_progress(
                             current_depth=depth - 1,
                             current_breadth=max(1, breadth // 2),
@@ -579,17 +782,20 @@ What specific data should we request from each plugin to answer this query?""",
                             current_query=q["query"]
                         )
 
-                        next_query = f"""
-                        Previous goal: {q.get('goal', '')}
-                        Follow-up directions: {json.dumps(result['next'])}
-                        """.strip()
+                        # Process each follow-up direction
+                        for j, next_direction in enumerate(result["next"]):
+                            next_query = f"""
+                            Previous query: {q["query"]}
+                            Previous findings: {json.dumps(result["learnings"])}
+                            Follow-up direction: {next_direction}
+                            """.strip()
 
-                        await deep_research(
-                            query=next_query,
-                            depth=depth - 1,
-                            breadth=max(1, breadth // 2),
-                            path_id=sub_path_id
-                        )
+                            await deep_research(
+                                query=next_query,
+                                depth=depth - 1,
+                                breadth=max(1, breadth // 2),
+                                path_id=f"{sub_path_id}_{j}"
+                            )
                     else:
                         report_progress(
                             current_depth=0,
@@ -597,7 +803,14 @@ What specific data should we request from each plugin to answer this query?""",
                             current_query=q["query"]
                         )
                 except Exception as e:
-                    print(f"Error processing query: {q['query']}: {e}")
+                    self.logger.error(f"Error processing query: {q['query']}: {e}")
+                    # Still add failed query to history for tracking
+                    state.query_history.append({
+                        "query": q["query"],
+                        "learnings": [],
+                        "plugins_used": [],
+                        "error": str(e)
+                    })
 
         # Execute research
         await deep_research(
@@ -606,10 +819,15 @@ What specific data should we request from each plugin to answer this query?""",
             breadth=request.breadth
         )
 
-        # Generate comprehensive summary before returning
-        summary = state.generate_research_summary()
+        # Generate final report
+        self.logger.info("\nGenerating final research report...")
+        final_report = await self._create_final_report(state)
         
-        # Return final results including summary
+        # Generate comprehensive summary
+        summary = state.generate_research_summary()
+        summary["final_report"] = final_report
+        
+        # Return final results including summary and report
         return ResearchResult(
             learnings=state.learnings,
             plugins_used=state.plugins_used,
