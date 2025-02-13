@@ -22,7 +22,7 @@ Thanks to [dzhng](https://github.com/dzhng) for the original [deep-research](htt
 
 [Sapho](https://github.com/operator-labs/sapho) is primarily designed to use Sonar Reasoning Pro by [Perplexity](https://perplexity.ai), but can theoretically use any reasoning model. 
 
-Optional plugins to format queries to external APIs, using structured outputs to format requests. These plugins are selectively invoked if the agent thinks they can be useful for advancing progress on the current research topic. 
+Optional plugins use structured outputs to format queries to external APIs. These plugins are selectively invoked if the agent thinks they can be useful for advancing progress on the current research topic. 
 
 At every step of recursion, the agent evaluates whether it makes sense to incorporate a plugin, or if it makes sense continue using just its core reasoning step. 
 
