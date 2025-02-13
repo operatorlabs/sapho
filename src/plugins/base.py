@@ -13,9 +13,9 @@ class PluginResponse(BaseModel):
 class Plugin(ABC):
     """Base plugin interface."""
     
-    @property
+    @classmethod
     @abstractmethod
-    def name(self) -> str:
+    def plugin_name(cls) -> str:
         """Plugin identifier."""
         pass
     

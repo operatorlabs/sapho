@@ -21,15 +21,19 @@ def load_plugins() -> Dict[str, Type[Plugin]]:
         if filename.endswith('.py') and not filename.startswith('__'):
             # Import the module
             module_name = filename[:-3]  # Remove .py extension
-            module = importlib.import_module(f'.{module_name}', package='sapho.plugins')
+            module = importlib.import_module(f'.{module_name}', package='plugins')
             
             # Find plugin classes in the module
-            for name, obj in inspect.getmembers(module):
+            for _, obj in inspect.getmembers(module):
                 if (inspect.isclass(obj) and 
                     issubclass(obj, Plugin) and 
-                    obj != Plugin and
-                    getattr(obj, 'name', None)):
-                    plugins[obj.name] = obj
+                    obj != Plugin):
+                    try:
+                        # Get plugin name without instantiating
+                        plugins[obj.plugin_name()] = obj
+                    except Exception:
+                        # Skip plugins that can't be loaded
+                        continue
     
     return plugins
 

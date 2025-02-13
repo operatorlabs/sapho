@@ -8,17 +8,7 @@ from .base import Plugin, PluginQuery, PluginResponse
 
 class GrokQuery(PluginQuery):
     """Query format for Grok."""
-    prompt: str = Field(description="The prompt to send to Grok")
-    system_prompt: str = Field(
-        default="You are an advanced AI assistant focused on research and analysis.",
-        description="System prompt to guide Grok's behavior"
-    )
-    temperature: float = Field(
-        default=0.7,
-        ge=0,
-        le=1,
-        description="Temperature for response generation"
-    )
+    prompt: str = Field(description="The specific question or query to analyze")
 
 class GrokResponse(PluginResponse):
     """Response format from Grok."""
@@ -38,8 +28,8 @@ class GrokPlugin(Plugin):
             raise ValueError("GROK_API_KEY environment variable is required")
         self.base_url = "https://api.x.ai/v1"
     
-    @property
-    def name(self) -> str:
+    @classmethod
+    def plugin_name(cls) -> str:
         return "grok"
     
     @property
@@ -64,7 +54,7 @@ class GrokPlugin(Plugin):
                 "messages": [
                     {
                         "role": "system",
-                        "content": params.system_prompt
+                        "content": "You are an advanced AI assistant focused on analyzing and answering questions based on your knowledge and research capabilities."
                     },
                     {
                         "role": "user",
@@ -73,7 +63,7 @@ class GrokPlugin(Plugin):
                 ],
                 "model": "grok-2-latest",
                 "stream": False,
-                "temperature": params.temperature
+                "temperature": 0.7
             }
             
             async with session.post(

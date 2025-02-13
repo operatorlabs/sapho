@@ -7,10 +7,10 @@ name = "sapho"
 version = "0.1.0"
 description = "Deep Research Agent for Crypto"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 license = "MIT"
 authors = [
-    { name = "Operator Labs", email = "info@operator.io" }
+    { name = "Operator Labs", email = "support@operator.io" }
 ]
 dependencies = [
     "fastapi>=0.104.1",
