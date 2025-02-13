@@ -26,10 +26,11 @@ wheels/
 *.egg
 
 # Virtual Environment
-venv/
+.env
+.venv
 env/
+venv/
 ENV/
-.venv/
 
 # IDE
 .idea/
@@ -38,15 +39,23 @@ ENV/
 *.swo
 .DS_Store
 
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Distribution
+dist/
+build/
+
 # Logs
 *.log
 logs/
 
+# Local development
+.env.local
+.env.*.local
+*.db
+
 # Docker
 .docker/
-
-# Testing
-.coverage
-htmlcov/
-.pytest_cache/
-.tox/

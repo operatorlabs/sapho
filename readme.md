@@ -1,4 +1,4 @@
-# Sapho - Open Deep Research Agent for Crypto
+# Sapho - Deep Research Agent for Crypto
 
 <div align="center">
   <img 
@@ -7,7 +7,7 @@
     width="200px" 
     style="border-radius: 8px; margin: 20px 0 10px 0;"
   />
-  <p style="color: #666; font-style: italic; margin-bottom: 20px;">
+  <p style="font-style: italic; margin-bottom: 20px;">
     Sapho Juice - The mystical substance used by Mentats to enhance their cognitive abilities
   </p>
 </div>
@@ -87,7 +87,7 @@ flowchart TB
     class NL,ND results
 ```
 
-## Research Process
+### Research Steps
 1. **Query Understanding & Setup**
    - Processes initial user query and parameters (breadth & depth)
    - Establishes research context using the reasoning model
@@ -109,123 +109,141 @@ flowchart TB
    - Generates final report with actionable insights
    - Highlights areas for potential further exploration
 
-## Requirements 
+## Project Structure
 
-- Python 3.10+
-- A model provider that supports structured outputs. We recommend Perplexity Sonar Reasoning Pro.
-- FastAPI for API endpoints
-- Pydantic for request/response models
-- Docker for containerization (optional)
+```
+├── src/
+│   └── sapho/             # Main package
+│       ├── __init__.py    # Package initialization
+│       ├── __main__.py    # Entry point
+│       ├── api/           # API endpoints
+│       ├── core/          # Core functionality
+│       ├── ai/            # AI/ML components
+│       └── plugins/       # Plugin system
+└── pyproject.toml        # Project configuration
+```
 
 ## Installation
 
+### From PyPI
 ```bash
-pip install sapho 
+pip install sapho
+```
+
+### From Source
+```bash
+git clone https://github.com/operator-labs/sapho.git
+cd sapho
+pip install -e ".[dev]"  # Installs with development dependencies
 ```
 
 ## Environment Setup
 
-Create a `.env` file in the root directory:
+Create a `.env` file in your project root:
 
 ```bash
-PERPLEXITY_API_KEY="your_perplexity_api_key"
+PERPLEXITY_API_KEY="your_perplexity_api_key"  # Required
+DEXSCREENER_API_KEY="your_dexscreener_api_key"  # Optional, for DexScreener plugin
 ```
 
-### DexScreener Plugin Setup
+## Usage
 
-To use the DexScreener plugin, add the following to your `.env` file:
+### As a Library
+
+```python
+from sapho import ResearchAgent
+
+agent = ResearchAgent(api_key="your_perplexity_api_key")
+results = await agent.research({
+    "query": "Research topic",
+    "breadth": 4,  # Optional
+    "depth": 2,   # Optional
+    "plugins": ["tokenmetrics"]  # Optional
+})
+```
+
+### Running the API Server
 
 ```bash
-DEXSCREENER_API_KEY="your_dexscreener_api_key"
+uvicorn sapho.api.server:app --reload
 ```
 
-## Plugin Environment Variables
+### API Endpoints
 
-As plugins are added to the system, they may require their own API keys or configuration values. Add these to your `.env` file as needed. 
-
-## API Usage
-
-The research agent can be accessed via REST API endpoints. The main endpoint accepts the following parameters:
-
-```json
-{
-  "query": "Your research query",  // Required
-  "breadth": 4,  // Optional
-  "depth": 2,  // Optional
-  "plugins": ["coingecko", "dexscreener"]  // Optional
-}
-```
-
-Start the API server:
-
-```bash
-uvicorn sapho.api:app --reload
-```
-
-Example minimal request:
-
+#### Research Endpoint
 ```bash
 curl -X POST "http://localhost:8000/research" \
   -H "Content-Type: application/json" \
-  -d '{"query": "Research topic"}'
+  -d '{
+    "query": "Research topic",
+    "breadth": 4,
+    "depth": 2,
+    "plugins": ["tokenmetrics"]
+  }'
 ```
 
-Example with all parameters:
-
+#### Health Check
 ```bash
-curl -X POST "http://localhost:8000/research" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Research topic", "breadth": 6, "depth": 3, "plugins": ["coingecko"]}'
+curl "http://localhost:8000/health"
 ```
 
-Example with plugins only:
+## Plugin System
 
-```bash
-curl -X POST "http://localhost:8000/research" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Research topic", "plugins": ["coingecko"]}'
+Plugins provide data to the research agent. The agent is smart enough to figure out when and how to use this data.
+
+### Available Plugins
+- **TokenMetrics**: Basic token statistics from CoinGecko
+- **DexScreener**: DEX trading data (requires API key)
+
+### Creating a Custom Plugin
+
+```python
+from sapho.plugins.base import Plugin
+from typing import Dict, Any
+from pydantic import BaseModel
+
+class TokenQuery(BaseModel):
+    symbol: str
+    fields: list[str]
+
+class MyPlugin(Plugin):
+    @property
+    def name(self) -> str:
+        return "myplugin"
+    
+    def can_handle(self, query: str) -> bool:
+        # The agent will check if it needs token data
+        return True
+    
+    async def query(self, query: str) -> Dict[str, Any]:
+        # Input: Structured query from the agent
+        # e.g. {"symbol": "BTC", "fields": ["price", "volume"]}
+        
+        params = TokenQuery.model_validate_json(query)
+        
+        # Do your API call here with the structured params
+        
+        # Return matching the schema the agent expects
+        return {
+            "price": 50000,
+            "volume": 1000000
+        }
 ```
 
-## Docker
-
-1. Clone the repository
-2. Copy `.env.example` to `.env` and set your Perplexity API key:
-```bash
-cp .env.example .env
-```
-
-3. Build and start the Docker container:
-```bash
-docker compose up -d
-```
-
-4. The API will be available at `http://localhost:8000`
-
-You can check the logs with:
-```bash
-docker compose logs -f
-```
-
-5. To stop the container:
-```bash
-docker compose down
-```
+That's it! The research agent will format queries appropriately for your plugin.
 
 ## Contributing
 
-Want to add a new plugin? Here's how:
-
-1. Fork the repo and create your plugin in the `plugins` directory
-2. Follow the plugin template (see DexScreener plugin as example)
-3. Submit a pull request with documentation and example usage
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
 ## Support
 
-Here's how to get help:
-
-1. Join our [Discord community](https://discord.gg/FQagDmCkvC)
-2. Check the #support channel for common issues
-3. Ask in #general for specific questions
+- Join our [Discord community](https://discord.gg/FQagDmCkvC)
+- Check the #support channel for common issues
+- Ask in #general for specific questions
 
 ## License
 
