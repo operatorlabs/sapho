@@ -1,6 +1,6 @@
-# Sapho.io - Open Deep Research Agent for Crypto
+# Sapho - Open Deep Research Agent for Crypto
 
-Sapho.io is a research agent built by [Operator Labs](https://operator.io). It is designed to buff up the core reasoner loop for any AI agent. It is designed to interact well with crypto price and onchain data, and is the core research agent for [mentat.fun](https://mentat.fun).
+[Sapho](https://github.com/operator-labs/sapho) is a research agent built by [Operator Labs](https://operator.io). It is designed to buff up the core reasoner loop for any AI agent. It is designed to interact well with crypto price and onchain data, and is the core research agent for [mentat.fun](https://mentat.fun).
 
 Thanks to [dzhng](https://github.com/dzhng) for the original [deep-research](https://github.com/dzhng/deep-research) repo, which inspired this project.
 
