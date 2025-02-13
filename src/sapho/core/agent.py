@@ -43,17 +43,41 @@ class ResearchAgent:
             api_key: API key for Sonar
         """
         self.reasoner = SonarReasoner(api_key)
-        self.plugins = load_plugins()  # Load all available plugins
-        self.active = {}
+        self.plugins = {}  # All available plugins
         
-        # Initialize all available plugins
-        for name, plugin_class in self.plugins.items():
+        # Load and initialize all plugins upfront
+        available_plugins = load_plugins()
+        for name, plugin_class in available_plugins.items():
             try:
-                self.active[name] = plugin_class()
-                print(f"Activated plugin: {name}")
+                self.plugins[name] = plugin_class()
+                print(f"Initialized plugin: {name}")
             except Exception as e:
                 print(f"Failed to initialize plugin {name}: {e}")
-    
+
+    async def _evaluate_plugin_relevance(
+        self,
+        query: str,
+        plugin_name: str,
+        plugin: Plugin
+    ) -> bool:
+        """Evaluate if a plugin is relevant for the current query."""
+        analysis = await self.reasoner.reason(
+            query=f"""Given this research query: {query}
+
+Plugin capability:
+{plugin_name}: {plugin.query_schema.model_json_schema()}
+
+Should this plugin be used to help answer the query? Consider:
+1. Is the plugin's data relevant to the query?
+2. Would the plugin's capabilities help advance the research?
+3. Is the data type provided by the plugin useful for this specific question?
+
+Return a clear YES or NO.""",
+            system_prompt="You are a research assistant. Evaluate if the plugin would be helpful for the current query."
+        )
+        
+        return "YES" in analysis.choices[0].message.content.upper()
+
     async def _generate_queries(
         self,
         query: str,
@@ -115,12 +139,56 @@ class ResearchAgent:
         num_follow_up: int = 3
     ) -> Dict[str, Any]:
         """Process a single query using state context."""
-        # First use reasoning to analyze what we need from plugins
+        # First evaluate which plugins would be useful for this specific query
+        relevant_plugins = {}
+        for name, plugin in self.plugins.items():
+            try:
+                if await self._evaluate_plugin_relevance(query, name, plugin):
+                    relevant_plugins[name] = plugin
+                    print(f"Using plugin {name} for query: {query}")
+            except Exception as e:
+                print(f"Failed to evaluate plugin {name}: {e}")
+        
+        if not relevant_plugins:
+            # Use pure reasoning if no plugins are relevant
+            synthesis_response = await self.reasoner.reason(
+                query=query,
+                system_prompt="""You are a research assistant. Given the query:
+1. Analyze the question thoroughly
+2. Extract key insights
+3. Identify areas that need further investigation"""
+            )
+            
+            synthesis_str = await self.reasoner.format_structured_output(
+                synthesis_response.choices[0].message.content,
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "learnings": {
+                            "type": "array",
+                            "items": {"type": "string"}
+                        },
+                        "next": {
+                            "type": "array",
+                            "items": {"type": "string"}
+                        }
+                    }
+                }
+            )
+            synthesis = json.loads(synthesis_str)
+            
+            return {
+                "learnings": synthesis.get("learnings", []),
+                "next": synthesis.get("next", []),
+                "plugins": []
+            }
+        
+        # For relevant plugins, proceed with structured queries
         analysis = await self.reasoner.reason(
             query=f"""Given this research query: {query}
 
 Available plugins and their capabilities:
-{chr(10).join(f'- {name}: {plugin.query_schema.model_json_schema()}' for name, plugin in self.active.items())}
+{chr(10).join(f'- {name}: {plugin.query_schema.model_json_schema()}' for name, plugin in relevant_plugins.items())}
 
 What specific data should we request from each plugin to answer this query?""",
             system_prompt="You are a research assistant. Analyze the query and determine what data we need from each available plugin."
@@ -141,7 +209,7 @@ What specific data should we request from each plugin to answer this query?""",
 
         # Get plugin data
         plugin_results = {}
-        for name, plugin in self.active.items():
+        for name, plugin in relevant_plugins.items():
             try:
                 if name in plugin_queries:
                     # Validate against plugin schema

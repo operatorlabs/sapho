@@ -143,7 +143,7 @@ Create a `.env` file in your project root:
 
 ```bash
 PERPLEXITY_API_KEY="your_perplexity_api_key"  # Required
-DEXSCREENER_API_KEY="your_dexscreener_api_key"  # Optional, for DexScreener plugin
+GROK_API_KEY="your_grok_api_key"  # Optional, for Grok plugin
 ```
 
 ## Usage
@@ -158,7 +158,6 @@ results = await agent.research({
     "query": "Research topic",
     "breadth": 4,  # Optional
     "depth": 2,   # Optional
-    "plugins": ["tokenmetrics"]  # Optional
 })
 ```
 
@@ -178,7 +177,6 @@ curl -X POST "http://localhost:8000/research" \
     "query": "Research topic",
     "breadth": 4,
     "depth": 2,
-    "plugins": ["tokenmetrics"]
   }'
 ```
 
@@ -192,8 +190,8 @@ curl "http://localhost:8000/health"
 Plugins provide data to the research agent. The agent is smart enough to figure out when and how to use this data.
 
 ### Available Plugins
-- **TokenMetrics**: Basic token statistics from CoinGecko
-- **DexScreener**: DEX trading data (requires API key)
+
+- **Grok**: Use Grok to get context from X (Twitter). 
 
 ### Creating a Custom Plugin
 
