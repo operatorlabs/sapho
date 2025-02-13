@@ -1,12 +1,12 @@
 # Sapho.io - Open Deep Research Agent for Crypto
 
-Sapho.io is a research agent built by [Operator Labs](https://operator.io). It is designed to buff up the core reasoner loop for any AI agent. It is designed to interact well with crypto price and onchain data. 
+Sapho.io is a research agent built by [Operator Labs](https://operator.io). It is designed to buff up the core reasoner loop for any AI agent. It is designed to interact well with crypto price and onchain data, and is the core research agent for [mentat.fun](https://mentat.fun).
 
-It is the core research agent for [mentat.fun](https://mentat.fun). Thanks to [dzhng](https://github.com/dzhng) for the original [deep-research](https://github.com/dzhng/deep-research) repo, which inspired this project.
+Thanks to [dzhng](https://github.com/dzhng) for the original [deep-research](https://github.com/dzhng/deep-research) repo, which inspired this project.
 
 ## How it works
 
-Primarily designed for Sonar Reasoning Pro by Perplexity, but Sapho.iocan theoretically use any reasoner model. 
+Primarily designed for Sonar Reasoning Pro by Perplexity, but [Sapho.io](https://github.com/operator-labs/sapho.io) can theoretically use any reasoner model. 
 
 Optional plugins can be added that leverage structured outputs to format queries to external APIs. These plugins are selectively invoked if the agent thinks that it can be useful for advancing progress on the current research topic. 
 
@@ -196,5 +196,25 @@ docker compose logs -f
 ```bash
 docker compose down
 ```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+Want to add a new plugin? Here's how:
+
+1. Fork the repo and create your plugin in the `plugins` directory
+2. Follow the plugin template (see DexScreener plugin as example)
+3. Submit a pull request with documentation and example usage
+
+## Support
+
+Here's how to get help:
+
+1. Join our [Discord community](https://discord.gg/FQagDmCkvC)
+2. Check the #support channel for common issues
+3. Ask in #general for specific questions
 
 
