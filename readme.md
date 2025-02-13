@@ -6,7 +6,7 @@ Thanks to [dzhng](https://github.com/dzhng) for the original [deep-research](htt
 
 ## How it works
 
-Primarily designed for Sonar Reasoning Pro by Perplexity, but [Sapho.io](https://github.com/operator-labs/sapho.io) can theoretically use any reasoner model. 
+Primarily designed for Sonar Reasoning Pro by Perplexity, but [Sapho](https://github.com/operator-labs/sapho) can theoretically use any reasoner model. 
 
 Optional plugins can be added that leverage structured outputs to format queries to external APIs. These plugins are selectively invoked if the agent thinks that it can be useful for advancing progress on the current research topic. 
 
