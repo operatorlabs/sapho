@@ -197,10 +197,6 @@ docker compose logs -f
 docker compose down
 ```
 
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## Contributing
 
 Want to add a new plugin? Here's how:
@@ -217,4 +213,7 @@ Here's how to get help:
 2. Check the #support channel for common issues
 3. Ask in #general for specific questions
 
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
