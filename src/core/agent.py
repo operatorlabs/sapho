@@ -12,6 +12,28 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Research Agent Configuration
+RESEARCH_CONFIG = {
+    # Context and token limits
+    "MAX_CONTEXT_TOKENS": 200000,  # Maximum tokens for context in reasoning
+    "MAX_RESPONSE_TOKENS": 5000,   # Target length for final responses
+    "MAX_SUMMARY_TOKENS": 2000,    # Maximum tokens for summaries
+    
+    # History tracking
+    "MAX_HISTORY_ITEMS": 5,        # Number of recent items to track in history
+    "MAX_CONTEXT_NOTES": 3,        # Number of context notes to maintain
+    
+    # Research parameters
+    "DEFAULT_DEPTH": 2,            # Default research depth
+    "DEFAULT_BREADTH": 4,          # Default research breadth
+    "MAX_FOLLOW_UP": 3,            # Maximum follow-up queries per branch
+    "MAX_LEARNINGS_PER_QUERY": 3,  # Maximum learnings to extract per query
+    
+    # Formatting
+    "MAX_CHARS_PER_CHUNK": 1500,   # Maximum characters per chunk for processing
+    "MAX_SUMMARY_ITERATIONS": 3,    # Maximum iterations for recursive summarization
+}
+
 class ResearchProgress(BaseModel):
     """Research progress tracking."""
     current_depth: int
@@ -333,8 +355,8 @@ IMPORTANT: Your response must:
         query: str,
         state: ResearchState,
         progress: Optional[ResearchProgress] = None,
-        num_learnings: int = 3,
-        num_follow_up: int = 3
+        num_learnings: int = RESEARCH_CONFIG["MAX_LEARNINGS_PER_QUERY"],
+        num_follow_up: int = RESEARCH_CONFIG["MAX_FOLLOW_UP"]
     ) -> Dict[str, Any]:
         """Process a single query using state context."""
         try:
@@ -357,13 +379,27 @@ IMPORTANT: Your response must:
             if not plugin_analysis:
                 # Use pure reasoning if plugins aren't needed
                 try:
-                    synthesis_response = await self.reasoner.reason(
+                    # First get initial analysis
+                    initial_response = await self.reasoner.reason(
                         query=query,
-                        system_prompt="""You are a research assistant. Given the query:
+                        system_prompt=f"""You are a research assistant. Given the query:
 1. Analyze the question thoroughly
-2. Extract key insights
-3. Identify areas that need further investigation
-4. BE CONCISE - keep your response under 1000 characters"""
+2. Extract key insights and findings
+3. BE CONCISE - keep your response under {RESEARCH_CONFIG["MAX_CHARS_PER_CHUNK"]} characters
+4. You can use up to {RESEARCH_CONFIG["MAX_CONTEXT_TOKENS"]} tokens of context
+5. Focus on direct, factual answers"""
+                    )
+                    
+                    # Then structure the findings
+                    synthesis_response = await self.reasoner.reason(
+                        query=f"""Based on this analysis, extract key learnings and next steps:
+
+{initial_response.choices[0].message.content}
+
+Format your response to include:
+1. Key learnings/findings (3-5 clear points)
+2. Potential follow-up directions""",
+                        system_prompt="Extract and structure the key findings and next steps."
                     )
                     
                     synthesis_str = await self.reasoner.format_structured_output(
@@ -394,21 +430,22 @@ IMPORTANT: Your response must:
                     
                     # Update state with new learnings
                     new_learnings = synthesis.get("learnings", [])[:num_learnings]
-                    state.learnings.extend(new_learnings)
-                    
-                    # Add to query history
-                    state.query_history.append({
-                        "query": query,
-                        "learnings": new_learnings,
-                        "plugins_used": []
-                    })
-                    
-                    state.add_reasoning_trace(
-                        query=query,
-                        response=synthesis_response.choices[0].message.content,
-                        result=synthesis,
-                        trace_type="pure_reasoning"
-                    )
+                    if new_learnings:  # Only extend if we actually found learnings
+                        state.learnings.extend(new_learnings)
+                        
+                        # Add to query history
+                        state.query_history.append({
+                            "query": query,
+                            "learnings": new_learnings,
+                            "plugins_used": []
+                        })
+                        
+                        state.add_reasoning_trace(
+                            query=query,
+                            response=synthesis_response.choices[0].message.content,
+                            result=synthesis,
+                            trace_type="pure_reasoning"
+                        )
                     
                     return {
                         "learnings": new_learnings,
@@ -614,11 +651,17 @@ BE CONCISE - keep your response under 1000 characters.""",
     async def _recursive_summarize(
         self,
         content: str,
-        max_chars: int = 2000
+        max_chars: int = 2000,
+        max_iterations: int = 3,
+        iteration: int = 0
     ) -> str:
         """Recursively summarize content until it fits within max_chars."""
         if len(content) <= max_chars:
             return content
+            
+        if iteration >= max_iterations:
+            self.logger.warning(f"Hit max iterations ({max_iterations}), truncating to {max_chars} chars")
+            return content[:max_chars-100] + "\n[Content truncated due to length]"
             
         # Split into chunks and summarize each
         chunks = [content[i:i + max_chars] for i in range(0, len(content), max_chars)]
@@ -626,61 +669,100 @@ BE CONCISE - keep your response under 1000 characters.""",
         
         for chunk in chunks:
             response = await self.reasoner.reason(
-                query=f"Summarize this content concisely while preserving key information:\n\n{chunk}",
-                system_prompt="You are a research assistant. Create a clear, concise summary that captures the essential points."
+                query=f"Summarize this content VERY concisely, focusing only on the most important points:\n\n{chunk}",
+                system_prompt="You are a research assistant. Create an extremely concise summary that captures only the most essential information."
             )
             summaries.append(response.choices[0].message.content)
         
         # Combine summaries
         combined = "\n\n".join(summaries)
         
-        # If still too long, recurse
+        # If still too long, recurse with iteration counter
         if len(combined) > max_chars:
-            return await self._recursive_summarize(combined, max_chars)
+            return await self._recursive_summarize(combined, max_chars, max_iterations, iteration + 1)
         
         return combined
 
     async def _create_final_report(self, state: ResearchState) -> str:
         """Create a final research report by analyzing and summarizing all findings."""
-        # Collect all research materials
-        materials = []
+        # Get all available information
+        summary = {
+            "original_query": state.research_paths[0]["query"] if state.research_paths else None,
+            "key_findings": state.learnings[-RESEARCH_CONFIG["MAX_HISTORY_ITEMS"]:],  # Last N key findings
+            "latest_query": state.query_history[-1]["query"] if state.query_history else None,
+            "latest_findings": state.query_history[-1].get("learnings", []) if state.query_history else [],
+            "plugins_used": state.plugins_used,
+            "total_learnings": len(state.learnings),
+            "total_context": len(state.context_notes),
+            "citations": [],  # Add this to store citations
+            "reasoning_traces": [
+                trace for trace in state.reasoning_traces 
+                if trace["type"] in ["pure_reasoning", "reasoning_analysis", "plugin_response"]  # Include plugin responses
+            ][-3:]  # Last 3 reasoning traces
+        }
         
-        # Add key learnings
-        if state.learnings:
-            materials.append("Key Learnings:\n" + "\n".join(f"- {learning}" for learning in state.learnings))
+        # Extract citations from reasoning traces
+        for trace in state.reasoning_traces:
+            if "result" in trace and isinstance(trace["result"], dict):
+                if "citations" in trace["result"]:
+                    summary["citations"].extend(trace["result"]["citations"])
+                elif "sources" in trace["result"]:
+                    summary["citations"].extend(trace["result"]["sources"])
         
-        # Add research path insights
-        for path in state.research_paths:
-            materials.append(f"\nResearch Path: {path['query']}")
-            for sub_query in path.get('sub_queries', []):
-                if sub_query.get('learnings'):
-                    materials.append("  Findings:")
-                    materials.extend(f"  - {learning}" for learning in sub_query['learnings'])
-        
-        # Add context notes
-        if state.context_notes:
-            materials.append("\nContext Notes:\n" + "\n".join(f"- {note}" for note in state.context_notes))
-        
-        # Combine all materials
-        full_content = "\n\n".join(materials)
-        
-        # First pass: Create detailed synthesis
-        synthesis_response = await self.reasoner.reason(
-            query=f"""Analyze and synthesize all research findings into a coherent narrative:
+        # Create final report with strict length limit and citations
+        prompt = f"""Create a final research report answering this query: {summary["original_query"]}
 
-{full_content}""",
-            system_prompt="""You are a research assistant. Create a comprehensive synthesis that:
-1. Integrates all key findings
-2. Highlights important connections
-3. Presents a clear narrative
-4. Maintains academic rigor"""
-        )
-        
-        # Second pass: Create final, concise report
-        detailed_synthesis = synthesis_response.choices[0].message.content
-        final_report = await self._recursive_summarize(detailed_synthesis)
-        
-        return final_report
+Available Sources:
+{chr(10).join(f'[{i+1}] {citation}' for i, citation in enumerate(summary["citations"]))}
+
+Latest Understanding:
+{chr(10).join(f"- {finding}" for finding in summary["latest_findings"]) if summary["latest_findings"] else "No direct findings available."}
+
+Key Findings Throughout Research ({summary["total_learnings"]} total):
+{chr(10).join(f"- {finding}" for finding in summary["key_findings"]) if summary["key_findings"] else "Using analysis from research process."}
+
+Context Notes: {summary["total_context"]} notes collected
+Tools Used: {', '.join(summary["plugins_used"]) if summary["plugins_used"] else "Pure reasoning"}
+
+IMPORTANT: Your response must:
+1. Be under {RESEARCH_CONFIG["MAX_RESPONSE_TOKENS"]} tokens
+2. Focus on directly answering the original query
+3. Incorporate all available information
+4. Use clear formatting for readability
+5. Provide a clear conclusion
+6. Reference sources using [n] citation format
+7. If no direct findings available, synthesize from the analysis process"""
+
+        try:
+            response = await self.reasoner.reason(
+                query=prompt,
+                system_prompt=f"""You are a research assistant. Create a final report that:
+1. Directly answers the main query
+2. Uses all available information to provide insights
+3. Uses clear formatting with headers and bullet points
+4. Keeps the response under {RESEARCH_CONFIG["MAX_RESPONSE_TOKENS"]} tokens
+5. Provides clear conclusions based on the research
+6. Can use up to {RESEARCH_CONFIG["MAX_CONTEXT_TOKENS"]} tokens of context
+7. If no direct findings available, synthesize insights from the analysis process"""
+            )
+            
+            report = response.choices[0].message.content.strip()
+            
+            # Enforce length limit if needed
+            if len(report) > RESEARCH_CONFIG["MAX_SUMMARY_TOKENS"]:
+                report = report[:RESEARCH_CONFIG["MAX_SUMMARY_TOKENS"]-100] + "\n\n[Report truncated to fit length limits]"
+                
+            # Add metadata footer
+            report += f"\n\nResearch Statistics:\n"
+            report += f"- Total Findings: {summary['total_learnings']}\n"
+            report += f"- Context Notes: {summary['total_context']}\n"
+            report += f"- Tools Used: {', '.join(summary['plugins_used']) if summary['plugins_used'] else 'Pure reasoning'}"
+            
+            return report
+            
+        except Exception as e:
+            self.logger.error(f"Error creating final report: {str(e)}")
+            return f"Error creating final report: {str(e)}"
 
     async def research(
         self,
@@ -821,19 +903,35 @@ BE CONCISE - keep your response under 1000 characters.""",
 
         # Generate final report
         self.logger.info("\nGenerating final research report...")
-        final_report = await self._create_final_report(state)
+        try:
+            final_report = await self._create_final_report(state)
+            self.logger.info("\nFinal Report:")
+            self.logger.info("=" * 80)
+            self.logger.info(final_report)
+            self.logger.info("=" * 80)
+        except Exception as e:
+            self.logger.error(f"Error generating final report: {e}")
+            final_report = "Error generating final report"
         
         # Generate comprehensive summary
         summary = state.generate_research_summary()
         summary["final_report"] = final_report
         
         # Return final results including summary and report
-        return ResearchResult(
+        result = ResearchResult(
             learnings=state.learnings,
             plugins_used=state.plugins_used,
             research_paths=state.research_paths,
             summary=summary
         )
+        
+        # Log the final results
+        self.logger.info("\nResearch Complete!")
+        self.logger.info(f"Total Learnings: {len(result.learnings)}")
+        self.logger.info(f"Plugins Used: {', '.join(result.plugins_used) if result.plugins_used else 'None'}")
+        self.logger.info(f"Research Paths: {len(result.research_paths)}")
+        
+        return result
 
     def _report_action(self, progress: ResearchProgress, action: str, state: ResearchState):
         """Report current action and state."""
