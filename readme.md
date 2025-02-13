@@ -1,18 +1,18 @@
 # Sapho - Open Deep Research Agent for Crypto
 
-[Sapho](https://github.com/operator-labs/sapho) is a research agent built by [Operator Labs](https://operator.io). It is designed to buff up the core reasoner loop for any AI agent, and is designed to interact well with crypto price and onchain data. [mentat.fun](https://mentat.fun) uses Sapho as its core research agent. 
+[Sapho](https://github.com/operator-labs/sapho) is a research agent built by [Operator Labs](https://operator.io). It is designed to buff up the core reasoner loop for any AI agent, and is designed to interact well with extensible plugins like [DexScreener](https://dexscreener.com). [mentat.fun](https://mentat.fun) uses Sapho as its core research agent. 
+
+Thanks to [dzhng](https://github.com/dzhng) for the original [deep-research](https://github.com/dzhng/deep-research) repo, which inspired this project. 
 
 <div align="center">
   <img src="https://cc-client-assets.nyc3.cdn.digitaloceanspaces.com/photo/categoryonegames/file/cd68275759e2483b84a5450356f7b499/large/juiceofsaphomentatdrug-250x363.jpg" alt="Sapho Juice" width="200px" style="border-radius: 8px; margin: 20px 0;"/>
 </div>
 
-Thanks to [dzhng](https://github.com/dzhng) for the original [deep-research](https://github.com/dzhng/deep-research) repo, which inspired this project. 
-
 ## How it works
 
-Primarily designed for Sonar Reasoning Pro by Perplexity, but [Sapho](https://github.com/operator-labs/sapho) can theoretically use any reasoner model. 
+[Sapho](https://github.com/operator-labs/sapho) is primarily designed to use Sonar Reasoning Pro by [Perplexity](https://perplexity.ai), but can theoretically use any reasoning model. 
 
-Optional plugins can be added that leverage structured outputs to format queries to external APIs. These plugins are selectively invoked if the agent thinks that it can be useful for advancing progress on the current research topic. 
+Optional plugins to format queries to external APIs, using structured outputs to format requests. These plugins are selectively invoked if the agent thinks they can be useful for advancing progress on the current research topic. 
 
 At every step of recursion, the agent evaluates whether it makes sense to incorporate a plugin, or if it makes sense continue using just its core reasoning step. 
 
