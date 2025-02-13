@@ -1,8 +1,8 @@
 # Sapho - Open Deep Research Agent for Crypto
 
-[Sapho](https://github.com/operator-labs/sapho) is a research agent built by [Operator Labs](https://operator.io). It is designed to buff up the core reasoner loop for any AI agent. It is designed to interact well with crypto price and onchain data, and is the core research agent for [mentat.fun](https://mentat.fun).
+[Sapho](https://github.com/operator-labs/sapho) is a research agent built by [Operator Labs](https://operator.io). It is designed to [buff up the core reasoner loop](https://cc-client-assets.nyc3.cdn.digitaloceanspaces.com/photo/categoryonegames/file/cd68275759e2483b84a5450356f7b499/large/juiceofsaphomentatdrug-250x363.jpg) for any AI agent. It is designed to interact well with crypto price and onchain data, and is the core research agent for [mentat.fun](https://mentat.fun). 
 
-Thanks to [dzhng](https://github.com/dzhng) for the original [deep-research](https://github.com/dzhng/deep-research) repo, which inspired this project.
+Thanks to [dzhng](https://github.com/dzhng) for the original [deep-research](https://github.com/dzhng/deep-research) repo, which inspired this project. 
 
 ## How it works
 
@@ -77,13 +77,13 @@ flowchart TB
 1. **Query Understanding & Setup**
    - Processes initial user query and parameters (breadth & depth)
    - Establishes research context using the reasoning model
-   - Sets up initial submodule configuration based on topic
+   - Sets up initial plugin configuration based on topic
 
 2. **Iterative Research & Analysis**
    - Executes core reasoning loop:
      - Generates targeted search queries
      - Processes results through reasoning engine
-     - Dynamically evaluates and incorporates relevant API submodules
+     - Dynamically evaluates and incorporates relevant API plugins
    - Maintains contextual awareness across iterations
    - Uses depth parameter to control recursive exploration
    - Accumulates and connects findings across iterations
@@ -106,7 +106,7 @@ flowchart TB
 ## Installation
 
 ```bash
-pip install sapho fastapi uvicorn pydantic
+pip install sapho 
 ```
 
 ## Environment Setup
