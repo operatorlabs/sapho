@@ -18,224 +18,76 @@
 
 Thanks to [dzhng](https://github.com/dzhng) for the original [deep-research](https://github.com/dzhng/deep-research) repo, which inspired this project. 
 
-## How it works
+## What is Sapho.io?
 
-[Sapho](https://github.com/operator-labs/sapho) is primarily designed to use Sonar Reasoning Pro by [Perplexity](https://perplexity.ai), but can theoretically use any reasoning model. 
+Sapho.io is a specialized search engine designed to handle complex cryptocurrency queries, like comparing the impact of regulations on Bitcoin prices. It uses advanced AI to break down questions into manageable steps, ensuring thorough and accurate answers.
 
-Optional plugins use structured outputs to format queries to external APIs. These plugins are selectively invoked if the agent thinks they can be useful for advancing progress on the current research topic. 
+### How Does It Work?
 
-At every step of recursion, the agent evaluates whether it makes sense to incorporate a plugin, or if it makes sense continue using just its core reasoning step. 
+Sapho.io operates through a recursive process where each step involves:
+- An LLM deciding which tool to use (e.g., web search, price API) based on the current query and previous findings
+- Updating a "scratchpad" with new learnings, like "Regulation X passed in January 2023"
+- Either generating a new subquery to dig deeper or stopping if the answer is complete
 
-When the agent has gathered enough information, it will synthesize the findings into a final report.
+It explores one path at a time (breadth = 1) and can stop early if it has enough data, or continue until it hits a maximum depth, then synthesize a final answer from all learnings.
 
-## Research Process
+### System Architecture
 
-```mermaid
-flowchart TB
-    subgraph Input
-        Q[User Query]
-        B[Breadth Parameter]
-        D[Depth Parameter]
-    end
+The architecture of Sapho.io is characterized by an improvisational, depth-focused process with a breadth of 1, meaning it explores one path deeply before moving to another. Each step involves a single tool call, dynamically decided by an LLM that examines a scratchpad's updated "learnings" to produce a result. Recursion continues until the system reaches a predefined maximum depth (max_depth), at which point it iterates over the scratchpad to synthesize a final result.
 
-    DR[Research Agent] -->
-    SM{Need Plugins?} -->|Yes| SO[Format Structured Outputs] --> API[API Calls] -->
-    PR[Process Results]
-    SM -->|No| PR
+### Key Components
 
-    subgraph Results[Results]
-        direction TB
-        NL((Learnings))
-        ND((Directions))
-    end
+1. Initialization
+- Begins with an initial query and maximum depth setting
+- Sets up a scratchpad to track progress and store learnings
+- Prepares necessary tools and APIs for data gathering
 
-    PR --> NL
-    PR --> ND
+2. Research Function
+- Makes recursive calls based on depth and current findings
+- Decides which tools to use at each step
+- Updates the scratchpad with new information
+- Generates subqueries when needed
 
-    DP{depth > 0?}
+3. Tool Execution
+- Integrates with various data sources (SERP, price APIs, etc.)
+- Processes raw data into structured learnings
+- Maintains modularity for easy tool addition
 
-    RD["Next Direction:
-    - Updated Context
-    - New Questions"]
+4. Scratchpad Management
+- Tracks query progress and depth
+- Stores learnings hierarchically
+- Enables backtracking and synthesis
 
-    MR[Markdown Report]
+5. Early Stopping Mechanism
+- Evaluates answer completeness
+- Can terminate before maximum depth
+- Optimizes for efficiency
 
-    %% Main Flow
-    Q & B & D --> DR
+### Example Workflow
 
-    %% Results to Decision
-    NL & ND --> DP
+Consider a query about regulation impacts on Bitcoin prices:
 
-    %% Circular Flow
-    DP -->|Yes| RD
-    RD -->|New Context| DR
+Step 1 (Depth 0):
+- Initial Query: "Compare the impact of Regulation X and Y on Bitcoin prices"
+- Tool: Web search for Regulation X
+- Learning: "Regulation X passed in January 2023"
 
-    %% Final Output
-    DP -->|No| MR
+Step 2 (Depth 1):
+- Subquery: "Get Regulation Y details"
+- Tool: Web search for Regulation Y
+- Learning: "Regulation Y passed in February 2023"
 
-    %% Styling
-    classDef input fill:#7bed9f,stroke:#2ed573,color:black
-    classDef process fill:#70a1ff,stroke:#1e90ff,color:black
-    classDef recursive fill:#ffa502,stroke:#ff7f50,color:black
-    classDef output fill:#ff4757,stroke:#ff6b81,color:black
-    classDef results fill:#a8e6cf,stroke:#3b7a57,color:black
+Step 3 (Depth 2):
+- Subquery: "Get price data"
+- Tool: Price API
+- Learning: "X caused 5% drop, Y caused 3% drop"
 
-    class Q,B,D input
-    class DR,PR,API,SO process
-    class DP,RD,SM recursive
-    class MR output
-    class NL,ND results
-```
+Final Step:
+- Synthesizes all learnings
+- Produces comprehensive comparison
+- Returns structured response
 
-### Research Steps
-1. **Query Understanding & Setup**
-   - Processes initial user query and parameters (breadth & depth)
-   - Establishes research context using the reasoning model
-   - Sets up initial plugin configuration based on topic
-
-2. **Iterative Research & Analysis**
-   - Executes core reasoning loop:
-     - Generates targeted search queries
-     - Processes results through reasoning engine
-     - Dynamically evaluates and incorporates relevant API plugins
-   - Maintains contextual awareness across iterations
-   - Uses depth parameter to control recursive exploration
-   - Accumulates and connects findings across iterations
-
-3. **Synthesis & Reporting**
-   - Consolidates findings across all research paths
-   - Structures information with clear reasoning chains
-   - Provides source attribution and confidence levels
-   - Generates final report with actionable insights
-   - Highlights areas for potential further exploration
-
-## Project Structure
-
-```
-├── src/
-│   └── sapho/             # Main package
-│       ├── __init__.py    # Package initialization
-│       ├── __main__.py    # Entry point
-│       ├── api/           # API endpoints
-│       ├── core/          # Core functionality
-│       ├── ai/            # AI/ML components
-│       └── plugins/       # Plugin system
-└── pyproject.toml        # Project configuration
-```
-
-## Installation
-
-### From PyPI
-```bash
-pip install sapho
-```
-
-### From Source
-```bash
-git clone https://github.com/operator-labs/sapho.git
-cd sapho
-pip install -e ".[dev]"  # Installs with development dependencies
-```
-
-## Environment Setup
-
-Create a `.env` file in your project root:
-
-```bash
-PERPLEXITY_API_KEY="your_perplexity_api_key"  # Required
-GROK_API_KEY="your_grok_api_key"  # Optional, for Grok plugin
-```
-
-## Usage
-
-### As a Library
-
-```python
-from sapho import ResearchAgent
-
-agent = ResearchAgent(api_key="your_perplexity_api_key")
-results = await agent.research({
-    "query": "Research topic",
-    "breadth": 4,  # Optional
-    "depth": 2,   # Optional
-})
-```
-
-### Running the API Server
-
-```bash
-uvicorn sapho.api.server:app --reload
-```
-
-### API Endpoints
-
-#### Research Endpoint
-```bash
-curl -X POST "http://localhost:8000/research" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "Research topic",
-    "breadth": 4,
-    "depth": 2,
-  }'
-```
-
-#### Health Check
-```bash
-curl "http://localhost:8000/health"
-```
-
-## Plugin System
-
-Plugins provide data to the research agent. The agent is smart enough to figure out when and how to use this data.
-
-### Available Plugins
-
-- **Grok**: Use Grok to get context from X (Twitter). 
-
-### Creating a Custom Plugin
-
-```python
-from sapho.plugins.base import Plugin
-from typing import Dict, Any
-from pydantic import BaseModel
-
-class TokenQuery(BaseModel):
-    symbol: str
-    fields: list[str]
-
-class MyPlugin(Plugin):
-    @property
-    def name(self) -> str:
-        return "myplugin"
-    
-    def can_handle(self, query: str) -> bool:
-        # The agent will check if it needs token data
-        return True
-    
-    async def query(self, query: str) -> Dict[str, Any]:
-        # Input: Structured query from the agent
-        # e.g. {"symbol": "BTC", "fields": ["price", "volume"]}
-        
-        params = TokenQuery.model_validate_json(query)
-        
-        # Do your API call here with the structured params
-        
-        # Return matching the schema the agent expects
-        return {
-            "price": 50000,
-            "volume": 1000000
-        }
-```
-
-That's it! The research agent will format queries appropriately for your plugin.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+This architecture enables Sapho.io to handle complex queries with precision while maintaining flexibility and efficiency in its research process.
 
 ## Support
 
