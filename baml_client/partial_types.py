@@ -33,9 +33,3 @@ class StreamState(BaseModel, Generic[T]):
     value: T
     state: Literal["Pending", "Incomplete", "Complete"]
 
-
-class Resume(BaseModel):
-    name: Optional[str] = None
-    email: Optional[str] = None
-    experience: List[str]
-    skills: List[str]

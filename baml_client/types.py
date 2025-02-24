@@ -39,9 +39,3 @@ def all_succeeded(checks: Dict[CheckName, Check]) -> bool:
     return all(check.status == "succeeded" for check in get_checks(checks))
 
 
-
-class Resume(BaseModel):
-    name: str
-    email: str
-    experience: List[str]
-    skills: List[str]

@@ -19,7 +19,7 @@ from . import partial_types
 from .globals import reset_baml_env_vars
 
 
-from .sync_client import b
+from .async_client import b
 
 
 

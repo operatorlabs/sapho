@@ -18,10 +18,6 @@
 
 Thanks to [dzhng](https://github.com/dzhng) for the original [deep-research](https://github.com/dzhng/deep-research) repo, which inspired this project. 
 
-## What is Sapho.io?
-
-Sapho.io is a specialized search engine designed to handle complex cryptocurrency queries, like comparing the impact of regulations on Bitcoin prices. It uses advanced AI to break down questions into manageable steps, ensuring thorough and accurate answers.
-
 ### How Does It Work?
 
 Sapho.io operates through a recursive process where each step involves:
@@ -31,11 +27,30 @@ Sapho.io operates through a recursive process where each step involves:
 
 It explores one path at a time (breadth = 1) and can stop early if it has enough data, or continue until it hits a maximum depth, then synthesize a final answer from all learnings.
 
-### System Architecture
+The architecture of Sapho.io is characterized by an improvisational, depth-focused process, meaning it explores one path deeply before moving to another. Each step involves a single tool call, dynamically decided by an LLM that examines a scratchpad's updated "learnings" to decide which tool to use. Recursion continues until the system reaches a predefined maximum depth (max_depth), at which point it iterates over the scratchpad to synthesize a final result.
 
-The architecture of Sapho.io is characterized by an improvisational, depth-focused process with a breadth of 1, meaning it explores one path deeply before moving to another. Each step involves a single tool call, dynamically decided by an LLM that examines a scratchpad's updated "learnings" to produce a result. Recursion continues until the system reaches a predefined maximum depth (max_depth), at which point it iterates over the scratchpad to synthesize a final result.
+### Codebase
 
-### Key Components
+```
+sapho/
+├── .env                   # Environment variables (not committed to Git)
+├── .env.example           # Example env file (for documentation)
+├── src/                 # Python package for Sapho AI agent
+│   ├── __init__.py
+│   ├── tools.py           # Implements external tool calls
+│   ├── agent.py           # Implements agent orchestration
+├── baml_src/              # BAML files defining reasoning logic
+│   ├── main.baml          # Defines AI agent’s reasoning logic
+│   ├── tools.baml         # Defines available tools
+├── baml_client/           # Auto-generated Python client (via BAML CLI)
+│   ├── types/             # Generated Pydantic models for BAML types
+│   ├── client.py          # Interface for calling BAML functions
+├── requirements.txt       # Python dependencies
+├── main.py                # Entry point to run the agent
+└── README.md              # Documentation
+```
+
+### Process
 
 1. Initialization
 - Begins with an initial query and maximum depth setting
@@ -48,17 +63,25 @@ The architecture of Sapho.io is characterized by an improvisational, depth-focus
 - Updates the scratchpad with new information
 - Generates subqueries when needed
 
-3. Tool Execution
+3. Tool Search and Selection
+- Dynamically discovers relevant tools based on query context
+- Optimizes memory by loading only necessary tools
+- Ranks tools by relevance to current research path
+- Supports extensible plugin ecosystem
+
+4. Tool Execution
 - Integrates with various data sources (SERP, price APIs, etc.)
 - Processes raw data into structured learnings
 - Maintains modularity for easy tool addition
 
-4. Scratchpad Management
-- Tracks query progress and depth
-- Stores learnings hierarchically
-- Enables backtracking and synthesis
+5. Scratchpad Management
+- Maintains raw text format for maximum flexibility and human readability
+- Allows natural language updates and annotations
+- Preserves context and nuance 
+- Enables easy manual review and editing when needed
+- Supports both structured and unstructured information
 
-5. Early Stopping Mechanism
+6. Early Stopping Mechanism
 - Evaluates answer completeness
 - Can terminate before maximum depth
 - Optimizes for efficiency
@@ -87,7 +110,22 @@ Final Step:
 - Produces comprehensive comparison
 - Returns structured response
 
-This architecture enables Sapho.io to handle complex queries with precision while maintaining flexibility and efficiency in its research process.
+This architecture enables Sapho to handle complex queries with precision while maintaining flexibility and efficiency in its research process.
+
+## Deployment
+
+Sapho is deployable in two ways:
+
+### 1. As a Model Context Protocol (MCP) Server
+
+You can run Sapho as an MCP server to integrate with Claude Desktop and other MCP clients. This allows direct interaction with the research agent for users who want to use Sapho as part of their workflow. 
+
+For installation instructions and documentation, visit:
+https://opentools.com/registry/sapho
+
+### 2. As a standalone FastAPI server
+
+You can run Sapho as a standalone server, which can be useful for development and testing purposes. Sapho is deployable as a standalone Docker container, which wraps a FastAPI server around the agent. This service is able to handle multiple concurrent requests, using FastAPI's task-based concurrency model.
 
 ## Support
 
